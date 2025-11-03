@@ -1,15 +1,7 @@
 {
   "name": "supabase-votes-app",
   "version": "1.0.0",
-  "description": "API for handling votes with Supabase",
-  "main": "api/votes.js",
-  "scripts": {
-    "dev": "vercel dev"
-  },
   "dependencies": {
     "@supabase/supabase-js": "^2.38.0"
-  },
-  "engines": {
-    "node": ">=18.0.0"
   }
 }
