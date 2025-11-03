@@ -1,4 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
+import fetch from "node-fetch"; // للتأكد من دعم reCAPTCHA
 
 const ALLOWED_ORIGINS = [
   "https://aljazeera-sd.blogspot.com",
@@ -27,7 +28,7 @@ export default async function handler(req, res) {
 
   const RECAPTCHA_SECRET = process.env.RECAPTCHA_SECRET_KEY;
 
-  // GET: قراءة جميع التصويتات
+  // GET: قراءة التصويتات
   if (req.method === "GET") {
     const { data, error } = await supabase
       .from("votes")
@@ -38,7 +39,7 @@ export default async function handler(req, res) {
     return res.status(200).json({ votes: data });
   }
 
-  // POST: إضافة تصويت جديد
+  // POST: إضافة تصويت
   if (req.method === "POST") {
     try {
       const { name, deviceId, token } = req.body;
@@ -49,7 +50,7 @@ export default async function handler(req, res) {
 
       // تحقق reCAPTCHA
       const captchaRes = await fetch(
-        `https://www.google.com/recaptcha/api/siteverify`,
+        "https://www.google.com/recaptcha/api/siteverify",
         {
           method: "POST",
           headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -57,12 +58,11 @@ export default async function handler(req, res) {
         }
       );
       const captchaData = await captchaRes.json();
-
       if (!captchaData.success) {
         return res.status(403).json({ message: "فشل التحقق من reCAPTCHA" });
       }
 
-      // التحقق من عدد التصويتات لهذا الجهاز
+      // التحقق من عدد التصويتات لكل جهاز
       const { data: existingVotes, error: fetchError } = await supabase
         .from("votes")
         .select("id")
@@ -75,7 +75,7 @@ export default async function handler(req, res) {
         return res.status(403).json({ message: "لقد بلغت الحد الأقصى لمرات التسجيل" });
       }
 
-      // إضافة التصويت الجديد
+      // إضافة التصويت
       const { data, error } = await supabase
         .from("votes")
         .insert([{ name, device_id: deviceId, time: new Date().toISOString() }])
@@ -84,7 +84,6 @@ export default async function handler(req, res) {
       if (error) return res.status(500).json({ message: "Error adding vote", error });
 
       return res.status(200).json({ message: "تمت الإضافة بنجاح", vote: data[0] });
-
     } catch (err) {
       console.error("POST error:", err);
       return res.status(500).json({ message: "Internal server error", err });
