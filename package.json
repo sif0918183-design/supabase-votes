@@ -1,7 +1,21 @@
 {
-  "name": "supabase-votes-app",
+  "name": "supabase-votes-api",
   "version": "1.0.0",
+  "description": "Serverless API on Vercel to handle votes using Supabase and reCAPTCHA",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "dev": "vercel dev",
+    "start": "vercel dev",
+    "deploy": "vercel --prod"
+  },
   "dependencies": {
-    "@supabase/supabase-js": "^2.38.0"
-  }
+    "@supabase/supabase-js": "^2.8.0",
+    "node-fetch": "^3.3.1"
+  },
+  "engines": {
+    "node": "18.x"
+  },
+  "author": "Your Name",
+  "license": "MIT"
 }
