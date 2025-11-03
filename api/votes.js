@@ -1,11 +1,15 @@
-import { createClient } from '@supabase/supabase-js'
+import { createClient } from "@supabase/supabase-js";
+
+const ALLOWED_ORIGINS = [
+  "https://aljazeera-sd.blogspot.com",
+  "https://www.aljazeera-sd.blogspot.com",
+];
+
+const SUPA_URL = process.env.SUPABASE_URL;
+const SUPA_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const supabase = createClient(SUPA_URL, SUPA_KEY);
 
 export default async function handler(req, res) {
-  const ALLOWED_ORIGINS = [
-    "https://aljazeera-sd.blogspot.com",
-    "https://www.aljazeera-sd.blogspot.com",
-  ];
-
   const origin = req.headers.origin;
 
   res.setHeader(
@@ -18,38 +22,32 @@ export default async function handler(req, res) {
   if (req.method === "OPTIONS") return res.status(200).end();
 
   if (!ALLOWED_ORIGINS.includes(origin)) {
-    return res.status(403).json({ message: "Access denied" });
+    return res.status(403).json({ message: "Access denied: Unauthorized origin" });
   }
 
-  const SUPABASE_URL = "https://alkhlsicauxxiuunzuse.supabase.co";
-  const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFsa2hsc2ljYXV4eGl1dW56dXNlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjIxMzA0NjgsImV4cCI6MjA3NzcwNjQ2OH0.gHMcYLJWwpvoLkGlHDDTMosMK6wVwufKWWh3R9JiaHk";
   const RECAPTCHA_SECRET = process.env.RECAPTCHA_SECRET_KEY;
 
-  const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-
+  // GET: قراءة جميع التصويتات
   if (req.method === "GET") {
-    try {
-      const { data, error } = await supabase
-        .from('votes')
-        .select('*')
-        .order('time', { ascending: false });
+    const { data, error } = await supabase
+      .from("votes")
+      .select("*")
+      .order("time", { ascending: true });
 
-      if (error) throw error;
-      
-      return res.status(200).json({ votes: data });
-    } catch (error) {
-      return res.status(500).json({ message: "Error fetching data" });
-    }
+    if (error) return res.status(500).json({ message: "Error fetching data", error });
+    return res.status(200).json({ votes: data });
   }
 
+  // POST: إضافة تصويت جديد
   if (req.method === "POST") {
     try {
       const { name, deviceId, token } = req.body;
 
-      if (!name || !token || !deviceId) {
-        return res.status(400).json({ message: "بيانات ناقصة" });
+      if (!name || !deviceId || !token) {
+        return res.status(400).json({ message: "البيانات غير مكتملة" });
       }
 
+      // تحقق reCAPTCHA
       const captchaRes = await fetch(
         `https://www.google.com/recaptcha/api/siteverify`,
         {
@@ -58,46 +56,38 @@ export default async function handler(req, res) {
           body: `secret=${RECAPTCHA_SECRET}&response=${token}`,
         }
       );
-      
       const captchaData = await captchaRes.json();
 
       if (!captchaData.success) {
         return res.status(403).json({ message: "فشل التحقق من reCAPTCHA" });
       }
 
+      // التحقق من عدد التصويتات لهذا الجهاز
+      const { data: existingVotes, error: fetchError } = await supabase
+        .from("votes")
+        .select("id")
+        .eq("device_id", deviceId);
+
+      if (fetchError) return res.status(500).json({ message: "Error checking votes", fetchError });
+
       const MAX_VOTES_PER_DEVICE = 10;
-      
-      const { data: deviceVotes, error: countError } = await supabase
-        .from('votes')
-        .select('*')
-        .eq('device_id', deviceId);
-
-      if (countError) throw countError;
-
-      if (deviceVotes.length >= MAX_VOTES_PER_DEVICE) {
-        return res.status(403).json({ message: "تجاوزت الحد المسموح" });
+      if (existingVotes.length >= MAX_VOTES_PER_DEVICE) {
+        return res.status(403).json({ message: "لقد بلغت الحد الأقصى لمرات التسجيل" });
       }
 
-      const { data: newVote, error: insertError } = await supabase
-        .from('votes')
-        .insert([
-          { 
-            name: name, 
-            device_id: deviceId,
-            time: new Date().toISOString()
-          }
-        ])
+      // إضافة التصويت الجديد
+      const { data, error } = await supabase
+        .from("votes")
+        .insert([{ name, device_id: deviceId, time: new Date().toISOString() }])
         .select();
 
-      if (insertError) throw insertError;
+      if (error) return res.status(500).json({ message: "Error adding vote", error });
 
-      return res.status(200).json({ 
-        message: "تمت الإضافة بنجاح", 
-        vote: newVote[0] 
-      });
+      return res.status(200).json({ message: "تمت الإضافة بنجاح", vote: data[0] });
 
-    } catch (error) {
-      return res.status(500).json({ message: "Error updating data" });
+    } catch (err) {
+      console.error("POST error:", err);
+      return res.status(500).json({ message: "Internal server error", err });
     }
   }
 
