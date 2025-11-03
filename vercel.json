@@ -9,7 +9,6 @@
   "routes": [
     {
       "src": "/api/votes",
-      "methods": ["GET", "POST", "OPTIONS"],
       "dest": "/api/votes.js"
     }
   ]
