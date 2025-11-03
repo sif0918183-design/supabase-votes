@@ -1,14 +1,15 @@
 import { createClient } from "@supabase/supabase-js";
-import fetch from "node-fetch"; // للتأكد من دعم reCAPTCHA
+
+// استخدم القيم مباشرة بدلاً من متغيرات البيئة
+const SUPA_URL = "https://alkhlsicauxxiuunzuse.supabase.co";
+const SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFsa2hsc2ljYXV4eGl1dW56dXNlIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2MjEzMDQ2OCwiZXhwIjoyMDc3NzA2NDY4fQ.0T-pFa6V_kNkLAhocPJ1yQo4oX2GoudE9h0kU9TNQVE";
+
+const supabase = createClient(SUPA_URL, SUPA_KEY);
 
 const ALLOWED_ORIGINS = [
   "https://aljazeera-sd.blogspot.com",
   "https://www.aljazeera-sd.blogspot.com",
 ];
-
-const SUPA_URL = process.env.SUPABASE_URL;
-const SUPA_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
-const supabase = createClient(SUPA_URL, SUPA_KEY);
 
 export default async function handler(req, res) {
   const origin = req.headers.origin;
@@ -26,17 +27,27 @@ export default async function handler(req, res) {
     return res.status(403).json({ message: "Access denied: Unauthorized origin" });
   }
 
+  // فقط RECAPTCHA_SECRET_KEY يحتاج متغير بيئة
   const RECAPTCHA_SECRET = process.env.RECAPTCHA_SECRET_KEY;
 
   // GET: قراءة التصويتات
   if (req.method === "GET") {
-    const { data, error } = await supabase
-      .from("votes")
-      .select("*")
-      .order("time", { ascending: true });
+    try {
+      const { data, error } = await supabase
+        .from("votes")
+        .select("*")
+        .order("time", { ascending: false });
 
-    if (error) return res.status(500).json({ message: "Error fetching data", error });
-    return res.status(200).json({ votes: data });
+      if (error) {
+        console.error("Supabase GET error:", error);
+        return res.status(500).json({ message: "Error fetching data", error });
+      }
+      
+      return res.status(200).json({ votes: data });
+    } catch (error) {
+      console.error("GET error:", error);
+      return res.status(500).json({ message: "Server error" });
+    }
   }
 
   // POST: إضافة تصويت
@@ -58,6 +69,7 @@ export default async function handler(req, res) {
         }
       );
       const captchaData = await captchaRes.json();
+      
       if (!captchaData.success) {
         return res.status(403).json({ message: "فشل التحقق من reCAPTCHA" });
       }
@@ -68,7 +80,10 @@ export default async function handler(req, res) {
         .select("id")
         .eq("device_id", deviceId);
 
-      if (fetchError) return res.status(500).json({ message: "Error checking votes", fetchError });
+      if (fetchError) {
+        console.error("Count error:", fetchError);
+        return res.status(500).json({ message: "Error checking votes" });
+      }
 
       const MAX_VOTES_PER_DEVICE = 10;
       if (existingVotes.length >= MAX_VOTES_PER_DEVICE) {
@@ -78,15 +93,26 @@ export default async function handler(req, res) {
       // إضافة التصويت
       const { data, error } = await supabase
         .from("votes")
-        .insert([{ name, device_id: deviceId, time: new Date().toISOString() }])
+        .insert([{ 
+          name, 
+          device_id: deviceId, 
+          time: new Date().toISOString() 
+        }])
         .select();
 
-      if (error) return res.status(500).json({ message: "Error adding vote", error });
+      if (error) {
+        console.error("Insert error:", error);
+        return res.status(500).json({ message: "Error adding vote" });
+      }
 
-      return res.status(200).json({ message: "تمت الإضافة بنجاح", vote: data[0] });
+      return res.status(200).json({ 
+        message: "تمت الإضافة بنجاح", 
+        vote: data[0] 
+      });
+
     } catch (err) {
       console.error("POST error:", err);
-      return res.status(500).json({ message: "Internal server error", err });
+      return res.status(500).json({ message: "Internal server error" });
     }
   }
 
